@@ -4,13 +4,16 @@ use strict;
 use WWW::Mechanize;
 use DBI;
 
-# config
+##################### config
 my $USERNAME = '';
 my $PASSWORD = '';
+# how many 'next-page' to fetch
 my $DEPTH = 2;
+# enables some logging
 my $LOG = 0;
+# which account to fetch
 my $ACCOUNT_ID = 0;
-# end of config
+##################### /config
 
 my $url_login = 'https://mobilbank.swedbank.se/banking/swedbank/login.html';
 my $url_account = 'https://mobilbank.swedbank.se/banking/swedbank/account.html?id=' . $ACCOUNT_ID;
