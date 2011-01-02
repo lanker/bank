@@ -38,12 +38,24 @@ sub login
     my $response = $mech->submit();
 }
 
+sub get_account_content
+{
+    $mech->get($url_account);
+    return split(/\n/, $mech->content());
+
+    #$mech->save_content('test.htm');
+    #open(FILE, '<test.htm');
+    #my @content = <FILE>;
+    #close(FILE);
+    #return @content;
+    #unlink('test.htm');
+}
+
 sub get_account_transactions
 {
     my @transactions;
     my $i = 0;
-    $mech->get($url_account);
-    my @content = split(/\n/, $mech->content());
+    my @content = @_;
     my @sub_transactions = parse_content(@content);
     @transactions = (@transactions, @sub_transactions);
     while ($i < $DEPTH && $mech->follow_link(class => 'trans-next') != undef)
@@ -108,7 +120,7 @@ sub remove_saved
     my $date;
     my $subject;
     my $amount;
-    my $sth = $dbh->prepare('SELECT * FROM swedbank ORDER BY id DESC LIMIT 1')
+    my $sth = $dbh->prepare('SELECT * FROM swedbank ORDER BY date DESC, id DESC LIMIT 1')
         or die "Couldn't prepare statement: " . $dbh->errstr;;
     $sth->execute();
     ($id, $date, $subject, $amount) = $sth->fetchrow_array;
@@ -151,7 +163,39 @@ sub log_transaction
     }
 }
 
-login();
-my @transactions = get_account_transactions();
-save_transactions(@transactions);
+sub get_account_balance
+{
+    my @content = @_;
+    my $balance = 0;
+    foreach my $l (@content)
+    {
+        if ($l =~ m/.*Tillg. belopp.*>([0-9 ]*)<\/span>.*/)
+        {
+            $balance = $1;
+            $balance =~ s/\s+//g;
+        }
+    }
+    if ($LOG)
+    {
+        print "balance: $balance\n";
+    }
+    return $balance;
+}
 
+sub save_balance
+{
+    my $balance = $_[0];
+
+    my ($s, $i, $h, $d, $m, $y, $wd, $yd, $dst) = localtime();
+    my $date = sprintf("%4d%02d%02d", $y + 1900, $m + 1, $d);
+
+    $dbh->do("INSERT INTO balance VALUES(NULL, ?, ?)", undef, $date, $balance)
+        or die "Couldn't save balance: " . $dbh->errstr;;
+}
+
+login();
+my @content = get_account_content();
+my @transactions = get_account_transactions(@content);
+save_transactions(@transactions);
+my $balance = get_account_balance(@content);
+save_balance($balance);
