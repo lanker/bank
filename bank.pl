@@ -42,13 +42,6 @@ sub get_account_content
 {
     $mech->get($url_account);
     return split(/\n/, $mech->content());
-
-    #$mech->save_content('test.htm');
-    #open(FILE, '<test.htm');
-    #my @content = <FILE>;
-    #close(FILE);
-    #return @content;
-    #unlink('test.htm');
 }
 
 sub get_account_transactions
