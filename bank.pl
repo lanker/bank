@@ -16,6 +16,7 @@ my $ACCOUNT_ID = 0;
 ##################### /config
 
 my $url_login = 'https://mobilbank.swedbank.se/banking/swedbank/login.html';
+my $url_login_next = 'https://mobilbank.swedbank.se/banking/swedbank/loginNext.html';
 my $url_account = 'https://mobilbank.swedbank.se/banking/swedbank/account.html?id=' . $ACCOUNT_ID;
 
 my $mech = WWW::Mechanize->new();
@@ -34,8 +35,21 @@ sub login
         }
     }
     $mech->form_number(1);
-    $mech->set_fields('_csrf_token' => $csrf_token, 'xyz' => $USERNAME, 'zyx' => $PASSWORD);
+    $mech->set_fields('_csrf_token' => $csrf_token, 'auth-mode' => 'code', 'xyz' => $USERNAME);
     my $response = $mech->submit();
+
+    # password screen
+    $content = $mech->response()->content();
+    foreach my $l ($content)
+    {
+        if ($l =~ /.*_csrf_token.*value=\"(.+)\"/)
+        {
+            $csrf_token = $1;
+        }
+    }
+    $mech->form_number(1);
+    $mech->set_fields('_csrf_token' => $csrf_token, 'zyx' => $PASSWORD);
+    $response = $mech->submit();
 }
 
 sub get_account_content
@@ -51,7 +65,7 @@ sub get_account_transactions
     my @content = @_;
     my @sub_transactions = parse_content(@content);
     @transactions = (@transactions, @sub_transactions);
-    while ($i < $DEPTH && $mech->follow_link(class => 'trans-next') != undef)
+    while ($i < $DEPTH && $mech->follow_link(class => 'trans-next orangered') != undef)
     {
         @content = split(/\n/, $mech->content());
         @sub_transactions = parse_content(@content);
@@ -68,38 +82,39 @@ sub get_account_transactions
 sub parse_content
 {
     my @content = @_;
-    my $date;
-    my $subject;
-    my $amount;
+    my $date = 'ERROR';
+    my $receiver = 'ERROR';
+    my $amount = 'ERROR';
     my @result;
     foreach my $l (@content)
     {
-        if ($l =~ m/.*trans-date\">([^<]+)<\/div>.*/)
+        if ($l =~ m/.*date\">([^<]+)<\/span>.*/)
         {
             $date = $1;
             $date =~ s/^\s+|\s+$//g ;
             $date =~ s/([\d][\d])-([\d][\d])-([\d][\d])/20$1$2$3/;
         }
-        elsif ($l =~ m/.*?trans-subject\">([^<]+)<\/div>.*/)
+        elsif ($l =~ m/.*?receiver\">([^<]+)<\/span>.*/)
         {
-            $subject = lc($1);
-            $subject =~ s/&ouml;/ö/g;
-            $subject =~ s/&aring;/å/g;
-            $subject =~ s/&auml;/ä/g;
-            $subject =~ s/&amp;/&/g;
-            $subject =~ s/^\s+|\s+$//g ;
+            $receiver = lc($1);
+            $receiver =~ s/&ouml;/ö/g;
+            $receiver =~ s/&aring;/å/g;
+            $receiver =~ s/&auml;/ä/g;
+            $receiver =~ s/&amp;/&/g;
+            $receiver =~ s/^\s+|\s+$//g ;
         }
-        elsif ($l =~ m/.*?trans-amount\">([^<]+)<\/div>.*/)
+        elsif ($l =~ m/.*?amount\">([^<]+)<\/span>.*/)
         {
             $amount = $1;
             $amount =~ s/^\s+|\s+$//g ;
             $amount =~ s/\s+//g;
-            if (!($subject =~ /skyddat belopp/))
+            if (!($receiver =~ /skyddat belopp/) &&
+                $date ne 'ERROR' && $receiver ne 'ERROR' && $amount ne 'ERROR')
             {
-                @result = (@result, [$date, $subject, $amount]);
+                @result = (@result, [$date, $receiver, $amount]);
             }
             $date = 'ERROR';
-            $subject = 'ERROR';
+            $receiver = 'ERROR';
             $amount = 'ERROR';
         }
     }
@@ -111,16 +126,16 @@ sub remove_saved
     my @transactions = @_;
     my $id;
     my $date;
-    my $subject;
+    my $receiver;
     my $amount;
     my $sth = $dbh->prepare('SELECT * FROM swedbank ORDER BY date DESC, id DESC LIMIT 1')
         or die "Couldn't prepare statement: " . $dbh->errstr;;
     $sth->execute();
-    ($id, $date, $subject, $amount) = $sth->fetchrow_array;
+    ($id, $date, $receiver, $amount) = $sth->fetchrow_array;
     my $i = 0;
     foreach my $t (@transactions)
     {
-        if ($t->[0] == $date && $t->[1] eq $subject && $t->[2] == $amount)
+        if ($t->[0] == $date && $t->[1] eq $receiver && $t->[2] == $amount)
         {
             return @transactions[0..$i-1];
             last;
@@ -160,12 +175,18 @@ sub get_account_balance
 {
     my @content = @_;
     my $balance = 0;
+    my $flip = 0;
     foreach my $l (@content)
     {
-        if ($l =~ m/.*Tillg. belopp.*>([0-9 ]*)<\/span>.*/)
+        if ($l =~ m/.*Tillg. belopp.*<\/span>.*/)
+        {
+            $flip = 1;
+        }
+        if ($flip == 1 && $l =~ m/.*amount">([0-9 ]*)<\/span>.*/)
         {
             $balance = $1;
             $balance =~ s/\s+//g;
+            $flip = 0;
         }
     }
     if ($LOG)
