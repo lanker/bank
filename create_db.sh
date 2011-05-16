@@ -10,4 +10,9 @@ sqlite3 swedbank.db <<SQL
     date INTEGER,
     balance INTEGER
   );
+  CREATE TABLE fund (
+    id INTEGER PRIMARY KEY,
+    date INTEGER,
+    value INTEGER
+  );
 SQL

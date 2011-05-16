@@ -18,6 +18,7 @@ my $ACCOUNT_ID = 0;
 my $url_login = 'https://mobilbank.swedbank.se/banking/swedbank/login.html';
 my $url_login_next = 'https://mobilbank.swedbank.se/banking/swedbank/loginNext.html';
 my $url_account = 'https://mobilbank.swedbank.se/banking/swedbank/account.html?id=' . $ACCOUNT_ID;
+my $url_overview = 'https://mobilbank.swedbank.se/banking/swedbank/account.html';
 
 my $mech = WWW::Mechanize->new();
 my $csrf_token;
@@ -178,7 +179,7 @@ sub get_account_balance
     my $flip = 0;
     foreach my $l (@content)
     {
-        if ($l =~ m/.*Tillg. belopp.*<\/span>.*/)
+        if ($l =~ m/.*Tillg\. belopp.*<\/span>.*/)
         {
             $flip = 1;
         }
@@ -196,6 +197,29 @@ sub get_account_balance
     return $balance;
 }
 
+sub get_funds
+{
+    $mech->get($url_overview);
+    my $content = $mech->response()->content();
+    my @content = split(/\n/, $content);
+    my $flip = 0;
+    my $fund = 0;
+    foreach my $l (@content)
+    {
+        if ($l =~ m/.*Fond.*<\/span>.*/)
+        {
+            $flip = 1;
+        }
+        if ($flip == 1 && $l =~ m/.*amount">([0-9 ]*)<\/span>.*/)
+        {
+            $flip = 0;
+            $fund = $1;
+            $fund =~ s/\s+//g;
+        }
+    }
+    return $fund;
+}
+
 sub save_balance
 {
     my $balance = $_[0];
@@ -207,7 +231,21 @@ sub save_balance
         or die "Couldn't save balance: " . $dbh->errstr;;
 }
 
+# TODO: merge with save_balance
+sub save_fund
+{
+    my $value = $_[0];
+
+    my ($s, $i, $h, $d, $m, $y, $wd, $yd, $dst) = localtime();
+    my $date = sprintf("%4d%02d%02d", $y + 1900, $m + 1, $d);
+
+    $dbh->do("INSERT INTO fund VALUES(NULL, ?, ?)", undef, $date, $value)
+        or die "Couldn't save fund: " . $dbh->errstr;;
+}
+
 login();
+my $fund = get_funds();
+save_fund($fund);
 my @content = get_account_content();
 my @transactions = get_account_transactions(@content);
 save_transactions(@transactions);
