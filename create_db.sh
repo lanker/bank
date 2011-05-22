@@ -1,18 +1,21 @@
-sqlite3 swedbank.db <<SQL
-  CREATE TABLE swedbank (
+sqlite3 bank.db <<SQL
+  CREATE TABLE transactions (
     id INTEGER PRIMARY KEY,
     date INTEGER,
     subject TEXT,
-    amount INTEGER
+    amount INTEGER,
+    bank TEXT
   );
   CREATE TABLE balance (
     id INTEGER PRIMARY KEY,
     date INTEGER,
-    balance INTEGER
+    balance INTEGER,
+    bank TEXT
   );
   CREATE TABLE fund (
     id INTEGER PRIMARY KEY,
     date INTEGER,
-    value INTEGER
+    value INTEGER,
+    bank TEXT
   );
 SQL
